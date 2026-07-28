@@ -1,0 +1,45 @@
+# Core Framework
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic==2.7.1
+python-multipart==0.0.9
+
+# Streamlit UI
+streamlit==1.35.0
+plotly==5.22.0
+
+# LangChain / LangGraph
+langchain==0.2.1
+langchain-core==0.2.1
+langchain-community==0.2.1
+langgraph==0.1.1
+
+# Azure OpenAI (primary LLM provider)
+langchain-openai==0.1.8
+openai==1.30.1
+
+# Vector Store
+chromadb==0.5.0
+faiss-cpu==1.12.0
+
+# Embeddings & Document Loaders
+sentence-transformers==3.0.0
+pypdf==4.2.0
+python-docx==1.1.2
+tiktoken==0.7.0
+
+# Monitoring & Logging
+prometheus-client==0.20.0
+loguru==0.7.2
+
+# Utilities
+python-dotenv==1.0.1
+httpx==0.27.0
+requests==2.32.3
+pandas>=2.2.0
+numpy>=1.26.0
+
+# Testing
+pytest==8.2.2
+pytest-asyncio==0.23.7
+httpx==0.27.0
