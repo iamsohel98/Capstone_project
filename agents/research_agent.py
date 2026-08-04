@@ -8,33 +8,20 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
+from dotenv import load_dotenv
+load_dotenv()
 from langchain_community.vectorstores import Chroma
 from langchain_classic.chains import RetrievalQA
 from langchain_core.prompts import PromptTemplate
 from loguru import logger
 
-
-def _load_llm() -> AzureChatOpenAI:
-    return AzureChatOpenAI(
-        azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-        azure_deployment=os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"),
-        api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-01"),
-        api_key=os.environ["AZURE_OPENAI_API_KEY"],
-        temperature=0.2,
-    )
+from agents.openai_client import load_chat_llm, load_embeddings
 
 
 def _load_vectorstore() -> Chroma:
-    embeddings = AzureOpenAIEmbeddings(
-        azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-        azure_deployment=os.environ.get("AZURE_OPENAI_EMBED_DEPLOYMENT", "text-embedding-3-small"),
-        api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-01"),
-        api_key=os.environ["AZURE_OPENAI_API_KEY"],
-    )
     return Chroma(
         collection_name="market_intelligence",
-        embedding_function=embeddings,
+        embedding_function=load_embeddings(),
         persist_directory="vectorstore",
     )
 
@@ -62,7 +49,7 @@ def run_research_agent(state: dict[str, Any]) -> dict[str, Any]:
     logger.info(f"[ResearchAgent] Processing query: {query}")
 
     try:
-        llm = _load_llm()
+        llm = load_chat_llm()
         vectorstore = _load_vectorstore()
         retriever = vectorstore.as_retriever(search_kwargs={"k": top_k})
         prompt = _build_prompt()
