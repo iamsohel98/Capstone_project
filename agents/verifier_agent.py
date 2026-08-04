@@ -8,9 +8,12 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from langchain_openai import AzureChatOpenAI
+from dotenv import load_dotenv
+load_dotenv()
 from langchain_core.prompts import ChatPromptTemplate
 from loguru import logger
+
+from agents.openai_client import load_chat_llm
 
 
 _VERIFIER_SYSTEM = """You are a strict fact-checking assistant.
@@ -30,16 +33,6 @@ ANSWER:
 {answer}
 
 Is the answer fully supported by the sources? Respond with VERIFIED or UNVERIFIED followed by a brief explanation."""
-
-
-def _load_llm() -> AzureChatOpenAI:
-    return AzureChatOpenAI(
-        azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-        azure_deployment=os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"),
-        api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-01"),
-        api_key=os.environ["AZURE_OPENAI_API_KEY"],
-        temperature=0.0,
-    )
 
 
 def run_verifier_agent(state: dict[str, Any]) -> dict[str, Any]:
@@ -73,7 +66,7 @@ def run_verifier_agent(state: dict[str, Any]) -> dict[str, Any]:
     )
 
     try:
-        llm = _load_llm()
+        llm = load_chat_llm()
         prompt = ChatPromptTemplate.from_messages([
             ("system", _VERIFIER_SYSTEM),
             ("human", _VERIFIER_HUMAN),
