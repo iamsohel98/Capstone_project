@@ -8,9 +8,12 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from langchain_openai import AzureChatOpenAI
+from dotenv import load_dotenv
+load_dotenv()
 from langchain_core.prompts import ChatPromptTemplate
 from loguru import logger
+
+from agents.openai_client import load_chat_llm
 
 
 _REPORT_SYSTEM = """You are a senior management consultant writing an executive business report.
@@ -60,16 +63,6 @@ Verified Sources:
 Please generate a complete executive report following the structure above."""
 
 
-def _load_llm() -> AzureChatOpenAI:
-    return AzureChatOpenAI(
-        azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-        azure_deployment=os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"),
-        api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-01"),
-        api_key=os.environ["AZURE_OPENAI_API_KEY"],
-        temperature=0.3,
-    )
-
-
 def _format_sources(sources: list[dict]) -> str:
     if not sources:
         return "No verified sources available."
@@ -111,7 +104,7 @@ def run_report_generator_agent(state: dict[str, Any]) -> dict[str, Any]:
         }
 
     try:
-        llm = _load_llm()
+        llm = load_chat_llm()
         prompt = ChatPromptTemplate.from_messages([
             ("system", _REPORT_SYSTEM),
             ("human", _REPORT_HUMAN),
