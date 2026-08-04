@@ -2,8 +2,13 @@
 FastAPI Backend — Multi-Agent Market Research & Executive Reporting Platform
 """
 
+import ssl_patch  # noqa: F401 — must be first to bypass corporate SSL
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
@@ -13,6 +18,7 @@ from loguru import logger
 
 from workflows.langgraph_workflow import run_market_intelligence_workflow
 from backend.metrics import metrics_store
+from vectorstore.ingest import ingest_file
 
 app = FastAPI(
     title="Market Intelligence API",
@@ -135,7 +141,7 @@ async def generate_report(request: ReportRequest) -> ReportResponse:
 @app.post("/upload-document")
 async def upload_document(file: UploadFile = File(...)) -> dict:
     """
-    Upload a research document (PDF or DOCX) to the document store.
+    Upload and index a research document in the vector store.
     """
     import shutil
     import os
@@ -145,7 +151,10 @@ async def upload_document(file: UploadFile = File(...)) -> dict:
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "text/plain",
     }
-    if file.content_type not in allowed_types:
+    file_name = Path(file.filename or "uploaded_document").name
+    suffix = Path(file_name).suffix.lower()
+
+    if file.content_type not in allowed_types and suffix not in {".pdf", ".docx", ".txt"}:
         raise HTTPException(
             status_code=400,
             detail="Unsupported file type. Please upload PDF, DOCX, or TXT.",
@@ -153,13 +162,23 @@ async def upload_document(file: UploadFile = File(...)) -> dict:
 
     save_dir = "data/sample_documents"
     os.makedirs(save_dir, exist_ok=True)
-    file_path = os.path.join(save_dir, file.filename)
+    file_path = os.path.join(save_dir, file_name)
 
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    logger.info(f"Document uploaded: {file.filename}")
-    return {"message": f"Document '{file.filename}' uploaded successfully.", "path": file_path}
+    try:
+        chunks_indexed = ingest_file(file_path)
+    except Exception as exc:
+        logger.error(f"Document uploaded but indexing failed for {file_name}: {exc}")
+        raise HTTPException(status_code=500, detail=f"Upload saved, but indexing failed: {exc}") from exc
+
+    logger.info(f"Document uploaded and indexed: {file_name}")
+    return {
+        "message": f"Document '{file_name}' uploaded and indexed successfully.",
+        "path": file_path,
+        "chunks_indexed": chunks_indexed,
+    }
 
 
 @app.get("/logs")
