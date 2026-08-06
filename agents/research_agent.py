@@ -11,7 +11,10 @@ from typing import Any
 from dotenv import load_dotenv
 load_dotenv()
 from langchain_community.vectorstores import Chroma
-from langchain_classic.chains import RetrievalQA
+try:
+    from langchain.chains import RetrievalQA
+except ImportError:
+    from langchain_classic.chains import RetrievalQA
 from langchain_core.prompts import PromptTemplate
 from loguru import logger
 
