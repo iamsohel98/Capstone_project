@@ -1,0 +1,11 @@
+[
+  "tests/test_api.py::test_generate_report_endpoint_success",
+  "tests/test_api.py::test_health_check",
+  "tests/test_api.py::test_logs_endpoint",
+  "tests/test_api.py::test_metrics_returns_expected_keys",
+  "tests/test_api.py::test_research_empty_query",
+  "tests/test_api.py::test_research_endpoint_error",
+  "tests/test_api.py::test_research_endpoint_success",
+  "tests/test_api.py::test_upload_document_invalid_type",
+  "tests/test_api.py::test_upload_document_valid_txt"
+]
