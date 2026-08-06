@@ -141,4 +141,4 @@ def test_upload_document_valid_txt(tmp_path):
         files={"file": ("test_doc.txt", content, "text/plain")},
     )
     assert response.status_code == 200
-    assert "uploaded successfully" in response.json()["message"]
+    assert "uploaded and indexed successfully" in response.json()["message"]
