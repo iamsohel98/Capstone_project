@@ -12,6 +12,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import ssl_patch  # noqa: F401 — must be first to bypass corporate SSL
 import glob
+import uuid
 from pathlib import Path
 
 from langchain_community.document_loaders import TextLoader, PyPDFLoader, Docx2txtLoader
@@ -20,7 +21,7 @@ from langchain_community.vectorstores import Chroma
 from loguru import logger
 from dotenv import load_dotenv
 
-from agents.openai_client import load_embeddings
+from agents.openai_client import embed_texts, load_embeddings
 
 load_dotenv(override=True)
 
@@ -77,6 +78,13 @@ def get_vectorstore() -> Chroma:
     )
 
 
+def _clean_metadata(metadata: dict) -> dict:
+    return {
+        str(key): "" if value is None else str(value)
+        for key, value in metadata.items()
+    }
+
+
 def ingest_file(file_path: str | Path) -> int:
     raw_docs = load_document(file_path)
     if not raw_docs:
@@ -86,7 +94,18 @@ def ingest_file(file_path: str | Path) -> int:
     source_name = Path(file_path).name
     vectorstore = get_vectorstore()
     vectorstore._collection.delete(where={"source": source_name})
-    vectorstore.add_documents(chunks)
+
+    texts = [chunk.page_content for chunk in chunks]
+    metadatas = [_clean_metadata(chunk.metadata) for chunk in chunks]
+    ids = [f"{source_name}-{uuid.uuid4()}" for _ in chunks]
+    embeddings = embed_texts(texts)
+
+    vectorstore._collection.upsert(
+        ids=ids,
+        documents=texts,
+        metadatas=metadatas,
+        embeddings=embeddings,
+    )
     vectorstore.persist()
     logger.info(f"Indexed uploaded document: {source_name} ({len(chunks)} chunk(s))")
     return len(chunks)
@@ -103,11 +122,19 @@ def ingest() -> None:
     chunks = split_documents(raw_docs)
     logger.info(f"Split into {len(chunks)} chunks.")
 
-    vectorstore = Chroma.from_documents(
-        documents=chunks,
-        embedding=load_embeddings(),
-        collection_name="market_intelligence",
-        persist_directory=VECTORSTORE_DIR,
+    vectorstore = get_vectorstore()
+    vectorstore._collection.delete()
+
+    texts = [chunk.page_content for chunk in chunks]
+    metadatas = [_clean_metadata(chunk.metadata) for chunk in chunks]
+    ids = [f"bulk-{uuid.uuid4()}" for _ in chunks]
+    embeddings = embed_texts(texts)
+
+    vectorstore._collection.upsert(
+        ids=ids,
+        documents=texts,
+        metadatas=metadatas,
+        embeddings=embeddings,
     )
     vectorstore.persist()
     logger.info(f"Ingestion complete. {len(chunks)} chunks stored in '{VECTORSTORE_DIR}'.")
