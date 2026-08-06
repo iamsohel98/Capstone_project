@@ -4,6 +4,9 @@ Streamlit Frontend — Multi-Agent Market Research & Executive Reporting Platfor
 
 import io
 import os
+import re
+import textwrap
+from datetime import datetime
 
 import plotly.express as px
 import plotly.graph_objects as go
@@ -15,6 +18,178 @@ import streamlit as st
 # ---------------------------------------------------------------------------
 
 API_BASE = os.environ.get("API_BASE_URL", "http://localhost:8000")
+
+
+def _pdf_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def _report_to_pdf(report_text: str, title: str = "Executive Report") -> bytes:
+    page_width = 612
+    page_height = 792
+    margin = 54
+    top_y = page_height - 96
+    bottom_y = 82
+    generated_on = datetime.now().strftime("%d %b %Y")
+
+    def clean(value: str) -> str:
+        return re.sub(r"\s+", " ", value.replace("`", "")).strip()
+
+    def is_heading(value: str) -> bool:
+        plain = clean(re.sub(r"^[#>\s]+", "", value).strip("*_ "))
+        if not plain:
+            return False
+        if value.lstrip().startswith("#"):
+            return True
+        if re.fullmatch(r"\*\*[^*]+\*\*", value.strip()):
+            return True
+        return len(plain) <= 72 and (plain.endswith(":") or plain.upper() == plain)
+
+    def wrap_text(value: str, width: int, prefix: str = "") -> list[str]:
+        wrapped = textwrap.wrap(value, width=width, break_long_words=False) or [""]
+        if not prefix:
+            return wrapped
+        return [prefix + wrapped[0], *["  " + item for item in wrapped[1:]]]
+
+    rows: list[dict[str, object]] = [
+        {"text": title, "style": "title", "indent": 0},
+        {"text": "", "style": "space", "indent": 0},
+    ]
+
+    for raw_line in (report_text or "No report generated.").splitlines():
+        line = raw_line.strip()
+        if not line:
+            rows.append({"text": "", "style": "space", "indent": 0})
+            continue
+
+        if is_heading(line):
+            heading = clean(re.sub(r"^[#>\s]+", "", line).strip("*_ :"))
+            for wrapped in wrap_text(heading, 62):
+                rows.append({"text": wrapped, "style": "heading", "indent": 0})
+            continue
+
+        numbered = re.match(r"^(\d+[.)])\s+(.+)$", line)
+        bullet = re.match(r"^[-*]\s+(.+)$", line)
+        if numbered:
+            prefix = f"{numbered.group(1)} "
+            for wrapped in wrap_text(clean(numbered.group(2)), 82, prefix):
+                rows.append({"text": wrapped, "style": "body", "indent": 14})
+        elif bullet:
+            for wrapped in wrap_text(clean(bullet.group(1)), 82, "- "):
+                rows.append({"text": wrapped, "style": "body", "indent": 14})
+        else:
+            for wrapped in wrap_text(clean(line.strip("*_")), 90):
+                rows.append({"text": wrapped, "style": "body", "indent": 0})
+
+    def row_height(row: dict[str, object]) -> int:
+        style = str(row["style"])
+        if style == "title":
+            return 26
+        if style == "heading":
+            return 22
+        if style == "space":
+            return 10
+        return 15
+
+    pages: list[list[dict[str, object]]] = [[]]
+    y = top_y
+    for row in rows:
+        height = row_height(row)
+        if y - height < bottom_y and pages[-1]:
+            pages.append([])
+            y = top_y
+        pages[-1].append(row)
+        y -= height
+
+    objects: list[str] = ["<< /Type /Catalog /Pages 2 0 R >>"]
+    page_ids: list[int] = []
+
+    objects.append("<< /Type /Pages /Kids [] /Count 0 >>")
+    objects.append("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    objects.append("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>")
+    font_id = 3
+    bold_font_id = 4
+
+    for page_number, page_rows in enumerate(pages, start=1):
+        page_id = len(objects) + 1
+        content_id = page_id + 1
+        page_ids.append(page_id)
+        objects.append(
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_width} {page_height}] "
+            f"/Resources << /Font << /F1 {font_id} 0 R /F2 {bold_font_id} 0 R >> >> /Contents {content_id} 0 R >>"
+        )
+
+        commands = [
+            "0.10 0.20 0.30 rg",
+            f"BT /F2 13 Tf 1 0 0 1 {margin} {page_height - 48} Tm (Market Intelligence Platform) Tj ET",
+            "0.35 0.45 0.55 rg",
+            f"BT /F1 9 Tf 1 0 0 1 {page_width - 178} {page_height - 48} Tm (Generated {generated_on}) Tj ET",
+            "0.70 0.78 0.84 RG",
+            f"{margin} {page_height - 62} m {page_width - margin} {page_height - 62} l S",
+        ]
+
+        y = top_y
+        for row in page_rows:
+            text = str(row["text"])
+            style = str(row["style"])
+            x = margin + int(row["indent"])
+
+            if style == "space":
+                y -= row_height(row)
+                continue
+
+            if style == "title":
+                font = "/F2"
+                size = 16
+                commands.append("0.08 0.18 0.28 rg")
+            elif style == "heading":
+                font = "/F2"
+                size = 12
+                commands.append("0.10 0.24 0.38 rg")
+            else:
+                font = "/F1"
+                size = 10
+                commands.append("0.12 0.12 0.12 rg")
+
+            commands.append(f"BT {font} {size} Tf 1 0 0 1 {x} {y} Tm ({_pdf_escape(text)}) Tj ET")
+            if style in {"title", "heading"}:
+                underline_width = min(len(text) * size * 0.54, page_width - margin - x)
+                commands.append("0.10 0.24 0.38 RG")
+                commands.append(f"{x} {y - 3} m {x + underline_width:.1f} {y - 3} l S")
+            y -= row_height(row)
+
+        commands.extend(
+            [
+                "0.70 0.78 0.84 RG",
+                f"{margin} 56 m {page_width - margin} 56 l S",
+                "0.38 0.45 0.52 rg",
+                f"BT /F1 8 Tf 1 0 0 1 {margin} 38 Tm (Confidential Executive Report) Tj ET",
+                f"BT /F1 8 Tf 1 0 0 1 {page_width - 112} 38 Tm (Page {page_number} of {len(pages)}) Tj ET",
+            ]
+        )
+        stream = "\n".join(commands)
+        objects.append(f"<< /Length {len(stream.encode('latin-1', errors='replace'))} >>\nstream\n{stream}\nendstream")
+
+    kids = " ".join(f"{page_id} 0 R" for page_id in page_ids)
+    objects[1] = f"<< /Type /Pages /Kids [{kids}] /Count {len(page_ids)} >>"
+
+    pdf = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for index, obj in enumerate(objects, start=1):
+        offsets.append(len(pdf))
+        pdf.extend(f"{index} 0 obj\n".encode())
+        pdf.extend(obj.encode("latin-1", errors="replace"))
+        pdf.extend(b"\nendobj\n")
+
+    xref_start = len(pdf)
+    pdf.extend(f"xref\n0 {len(objects) + 1}\n".encode())
+    pdf.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        pdf.extend(f"{offset:010d} 00000 n \n".encode())
+    pdf.extend(
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_start}\n%%EOF".encode()
+    )
+    return bytes(pdf)
 
 st.set_page_config(
     page_title="Market Intelligence Platform",
@@ -179,20 +354,26 @@ st.markdown(
 
         .stButton > button,
         .stDownloadButton > button {
-            background: var(--mi-blue);
-            color: #ffffff;
-            border: 0;
+            background: #ffe8a3;
+            color: #000000 !important;
+            border: 1px solid #e7bd3f;
             border-radius: 8px;
             padding: 0.55rem 1.1rem;
-            font-weight: 700;
-            box-shadow: 0 10px 22px rgba(31, 117, 203, 0.22);
+            font-weight: 800 !important;
+            box-shadow: 0 10px 22px rgba(231, 189, 63, 0.22);
+        }
+
+        .stButton > button p,
+        .stDownloadButton > button p {
+            color: #000000 !important;
+            font-weight: 800 !important;
         }
 
         .stButton > button:hover,
         .stDownloadButton > button:hover {
-            background: #185fa6;
-            color: #ffffff;
-            border: 0;
+            background: #ffd86a;
+            color: #000000 !important;
+            border: 1px solid #d3a71f;
         }
 
         textarea,
@@ -438,13 +619,24 @@ elif page == "Executive Report":
                             f"Request ID: {data.get('request_id', 'N/A')}"
                         )
 
-                        report_bytes = data.get("report", "").encode("utf-8")
-                        st.download_button(
-                            label="Download Report (TXT)",
-                            data=report_bytes,
-                            file_name="executive_report.txt",
-                            mime="text/plain",
-                        )
+                        report_text = data.get("report", "")
+                        report_bytes = report_text.encode("utf-8")
+                        pdf_bytes = _report_to_pdf(report_text)
+                        txt_col, pdf_col = st.columns(2)
+                        with txt_col:
+                            st.download_button(
+                                label="Download Report (TXT)",
+                                data=report_bytes,
+                                file_name="executive_report.txt",
+                                mime="text/plain",
+                            )
+                        with pdf_col:
+                            st.download_button(
+                                label="Download Report (PDF)",
+                                data=pdf_bytes,
+                                file_name="executive_report.pdf",
+                                mime="application/pdf",
+                            )
                     else:
                         st.error(f"API error {resp.status_code}: {resp.text}")
                 except Exception as e:
