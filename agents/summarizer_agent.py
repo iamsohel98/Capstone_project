@@ -51,7 +51,20 @@ def run_summarizer_agent(state: dict[str, Any]) -> dict[str, Any]:
 
     logger.info("[SummarizerAgent] Generating business summary.")
 
-    if not raw_insights.strip() or "could not be found" in raw_insights.lower():
+    if state.get("error"):
+        return {
+            **state,
+            "summary": (
+                "Research could not be completed because the document retrieval step failed. "
+                f"Error: {state.get('error')}"
+            ),
+        }
+
+    if (
+        not raw_insights.strip()
+        or "could not be found" in raw_insights.lower()
+        or "research agent encountered an error" in raw_insights.lower()
+    ):
         return {
             **state,
             "summary": "Insufficient information found in documents to generate a meaningful summary.",
