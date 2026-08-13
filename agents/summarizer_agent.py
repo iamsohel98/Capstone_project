@@ -2,7 +2,6 @@
 Summarizer Agent — converts raw research insights into concise,
 business-friendly summaries covering trends, risks, and opportunities.
 """
-
 from __future__ import annotations
 
 import os
