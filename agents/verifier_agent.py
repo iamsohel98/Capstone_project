@@ -1,6 +1,6 @@
 """
 Verifier Agent — validates that generated insights are grounded in
-the retrieved source documents and flags unsupported claims.
+the retrieved source documents and flags unsupported claims
 """
 
 from __future__ import annotations
