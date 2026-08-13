@@ -33,6 +33,7 @@ SUPPORTED_SUFFIXES = {".pdf", ".docx", ".txt"}
 
 
 def load_document(file_path: str | Path) -> list:
+    # Pick the right LangChain loader based on file extension (PDF/DOCX/TXT)
     path = Path(file_path)
     if not path.is_file() or path.suffix.lower() not in SUPPORTED_SUFFIXES:
         return []
@@ -46,6 +47,7 @@ def load_document(file_path: str | Path) -> list:
             loader = TextLoader(str(path), encoding="utf-8")
 
         loaded = loader.load()
+        # Tag each doc with its filename so retrieved chunks can be traced back to a source
         for doc in loaded:
             doc.metadata["source"] = path.name
         logger.info(f"Loaded: {path.name} ({len(loaded)} document(s))")
@@ -56,6 +58,7 @@ def load_document(file_path: str | Path) -> list:
 
 
 def load_documents(directory: str) -> list:
+    # Recursively load every supported file under the sample documents directory
     docs = []
     for file_path in glob.glob(f"{directory}/**/*", recursive=True):
         docs.extend(load_document(file_path))
@@ -63,6 +66,7 @@ def load_documents(directory: str) -> list:
 
 
 def split_documents(raw_docs: list) -> list:
+    # Break documents into overlapping chunks so retrieval returns focused, relevant context
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
@@ -71,6 +75,7 @@ def split_documents(raw_docs: list) -> list:
 
 
 def get_vectorstore() -> Chroma:
+    # Connect to the persisted Chroma collection used for RAG retrieval
     return Chroma(
         collection_name="market_intelligence",
         embedding_function=load_embeddings(),
@@ -86,6 +91,7 @@ def _clean_metadata(metadata: dict) -> dict:
 
 
 def ingest_file(file_path: str | Path) -> int:
+    # Incrementally index a single uploaded file into the RAG vector store
     raw_docs = load_document(file_path)
     if not raw_docs:
         raise ValueError(f"No readable content found in {Path(file_path).name}")
@@ -93,6 +99,7 @@ def ingest_file(file_path: str | Path) -> int:
     chunks = split_documents(raw_docs)
     source_name = Path(file_path).name
     vectorstore = get_vectorstore()
+    # Remove any stale chunks from a previous version of this same file before re-adding
     vectorstore._collection.delete(where={"source": source_name})
 
     texts = [chunk.page_content for chunk in chunks]
@@ -112,6 +119,7 @@ def ingest_file(file_path: str | Path) -> int:
 
 
 def ingest() -> None:
+    # Bulk (re)build of the vector store from all sample documents on disk
     logger.info("Starting document ingestion...")
 
     raw_docs = load_documents(DOCUMENTS_DIR)
@@ -123,6 +131,7 @@ def ingest() -> None:
     logger.info(f"Split into {len(chunks)} chunks.")
 
     vectorstore = get_vectorstore()
+    # Wipe the existing collection so re-running ingestion doesn't duplicate chunks
     vectorstore._collection.delete()
 
     texts = [chunk.page_content for chunk in chunks]

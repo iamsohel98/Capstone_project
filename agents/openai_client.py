@@ -22,6 +22,7 @@ def _base_url() -> str:
 
 
 def load_chat_llm() -> ChatOpenAI:
+    # Chat model used to generate answers from retrieved RAG context
     return ChatOpenAI(
         base_url=_base_url(),
         model=os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5"),
@@ -32,6 +33,7 @@ def load_chat_llm() -> ChatOpenAI:
 
 
 def load_embeddings() -> OpenAIEmbeddings:
+    # Embedding model wired into Chroma for similarity search at query time
     return OpenAIEmbeddings(
         base_url=_base_url(),
         model=os.environ.get("AZURE_OPENAI_EMBED_DEPLOYMENT", "text-embedding-3-small"),
@@ -42,6 +44,7 @@ def load_embeddings() -> OpenAIEmbeddings:
 
 
 def embed_texts(texts: list[str], batch_size: int = 16) -> list[list[float]]:
+    # Batched embedding calls used during ingestion to vectorize document chunks
     client = OpenAI(
         base_url=_base_url(),
         api_key=os.environ["AZURE_OPENAI_API_KEY"],

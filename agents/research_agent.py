@@ -22,6 +22,7 @@ from agents.openai_client import load_chat_llm, load_embeddings
 
 
 def _load_vectorstore() -> Chroma:
+    # Reconnect to the same persisted Chroma collection populated during ingestion
     return Chroma(
         collection_name="market_intelligence",
         embedding_function=load_embeddings(),
@@ -30,6 +31,7 @@ def _load_vectorstore() -> Chroma:
 
 
 def _build_prompt() -> PromptTemplate:
+    # Grounding prompt instructs the LLM to answer only from retrieved context
     template_path = "prompts/research_prompt.txt"
     with open(template_path, "r") as f:
         template = f.read()
@@ -54,9 +56,11 @@ def run_research_agent(state: dict[str, Any]) -> dict[str, Any]:
     try:
         llm = load_chat_llm()
         vectorstore = _load_vectorstore()
+        # Top-k similarity search over embedded chunks — core RAG retrieval step
         retriever = vectorstore.as_retriever(search_kwargs={"k": top_k})
         prompt = _build_prompt()
 
+        # "stuff" chain injects all retrieved chunks directly into the prompt context
         qa_chain = RetrievalQA.from_chain_type(
             llm=llm,
             chain_type="stuff",
@@ -69,6 +73,7 @@ def run_research_agent(state: dict[str, Any]) -> dict[str, Any]:
         answer = result.get("result", "")
         source_docs = result.get("source_documents", [])
 
+        # Keep a trimmed preview + metadata of each source for citation/verification downstream
         sources = [
             {
                 "content": doc.page_content[:300],
