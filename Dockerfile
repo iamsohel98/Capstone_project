@@ -33,6 +33,6 @@ RUN mkdir -p data/sample_documents vectorstore
 # Expose ports: 8000 = FastAPI, 8501 = Streamlit
 EXPOSE 8000 8501
 
-# Default: run FastAPI backend
+# Default:to run FastAPI backend
 # Override CMD to run Streamlit: docker run ... streamlit run frontend/app.py
 CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
